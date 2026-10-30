@@ -19,8 +19,12 @@ _allowed_origins = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "http://loca
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Starting Sanrakshak API")
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        logger.info("Database tables ensured")
+    except Exception as exc:
+        logger.warning("Database unavailable at startup: %s", exc)
     yield
     logger.info("Shutting down Sanrakshak API")
     await engine.dispose()

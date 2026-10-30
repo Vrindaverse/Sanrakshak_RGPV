@@ -270,72 +270,6 @@ def run_nikto(scan_id: str, target: str) -> dict:
     }
 
 
-def run_zap(scan_id: str, target: str) -> dict:
-    try:
-        validated = _validate_target(target)
-    except Exception as e:
-        return {
-            "tool": "OWASP ZAP",
-            "status": "error",
-            "summary": "Invalid target",
-            "raw": str(e),
-            "interpretation": [{"finding": "Invalid target", "detail": "Target validation failed.", "severity": "info"}],
-        }
-    safe_name = hashlib.md5(validated.encode()).hexdigest()[:12]
-    output_path = f"/tmp/zap_report_{safe_name}_{scan_id[:8]}.json"
-    cmd = ["zap-cli", "--quick", validated, "--output", output_path]
-    raw = ""
-    alerts = []
-    try:
-        out, err, rc = _run_cmd(cmd, timeout=600, scan_id=scan_id)
-        raw = out or err
-    except FileNotFoundError:
-        logger.warning("OWASP ZAP (zap-cli) not installed on server")
-        return {
-            "tool": "OWASP ZAP",
-            "status": "not_installed",
-            "summary": "ZAP not installed on server",
-            "raw": "zap-cli not installed on server",
-            "interpretation": [],
-        }
-
-    if not raw:
-        try:
-            with open(output_path) as f:
-                data = json.load(f)
-            raw = json.dumps(data, indent=2)
-            for site in data.get("site", []):
-                alerts.extend(site.get("alerts", []))
-        except FileNotFoundError:
-            raw = "ZAP output file not found"
-        except Exception as e:
-            raw = str(e)
-            logger.exception("ZAP output parse error for %s: %s", target, e)
-
-    severities = {"High": 0, "Medium": 0, "Low": 0}
-    for a in alerts:
-        s = a.get("risk", "")
-        if s in severities:
-            severities[s] += 1
-
-    parts = [f"{v} {k.lower()}-risk" for k, v in severities.items() if v > 0]
-    summary = ", ".join(parts) if parts else "No alerts"
-
-    risk_map = {"High": "high", "Medium": "medium", "Low": "low"}
-
-    status = "completed" if rc == 0 else "failed"
-    return {
-        "tool": "OWASP ZAP",
-        "status": status,
-        "summary": summary,
-        "raw": raw,
-        "interpretation": [
-            {"finding": a.get("name", "Unknown"), "detail": a.get("description", ""), "severity": risk_map.get(a.get("risk", ""), "low")}
-            for a in alerts[:10]
-        ] or [{"finding": "No alerts detected", "detail": "ZAP did not find any vulnerabilities.", "severity": "info"}],
-    }
-
-
 async def run_scanners(scan_id: str, target: str) -> list[dict]:
     # Validate once (off the event loop: DNS resolution is blocking)
     loop = asyncio.get_running_loop()
@@ -353,9 +287,8 @@ async def run_scanners(scan_id: str, target: str) -> list[dict]:
     # Run nmap and nikto in parallel for faster results
     nmap_task = loop.run_in_executor(None, run_nmap, scan_id, validated)
     nikto_task = loop.run_in_executor(None, run_nikto, scan_id, validated)
-    zap_task = loop.run_in_executor(None, run_zap, scan_id, validated)
 
-    results = await asyncio.gather(nmap_task, nikto_task, zap_task, return_exceptions=True)
+    results = await asyncio.gather(nmap_task, nikto_task, return_exceptions=True)
     valid = []
     for r in results:
         if isinstance(r, dict):

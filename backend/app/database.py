@@ -10,6 +10,8 @@ sslmode = (params.get("sslmode") or [None])[0]
 if sslmode and sslmode != "disable":
     # require / verify-ca / verify-full / prefer all need TLS for asyncpg
     connect_args["ssl"] = True
+elif sslmode == "disable":
+    connect_args["ssl"] = False
 clean = parsed._replace(query="")
 raw_url = urlunparse(clean)
 
