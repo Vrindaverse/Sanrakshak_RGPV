@@ -2,19 +2,20 @@ FROM python:3.12-slim-bookworm
 
 WORKDIR /app
 
-# Install system dependencies for vulnerability scanning
-RUN set -eux; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends \
-        nmap \
-        nikto; \
-    rm -rf /var/lib/apt/lists/*
+# Update package lists
+RUN apt-get update
+
+# Install Nmap separately
+RUN apt-get install -y --no-install-recommends nmap
+
+# Install Nikto separately
+RUN apt-get install -y --no-install-recommends nikto
 
 # Install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
+# Copy application
 COPY . .
 
 # Start FastAPI
